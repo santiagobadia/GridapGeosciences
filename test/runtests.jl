@@ -7,5 +7,5 @@ using Test
   @time @testset "WeakDivPerpTests" begin include("WeakDivPerpTests.jl") end
   @time @testset "LaplaceBeltramiCubedSphereTests" begin include("LaplaceBeltramiCubedSphereTests.jl") end
   @time @testset "WaveEquationCubedSphereTests" begin include("WaveEquationCubedSphereTests.jl") end
-  
+  @time @testset "DivTermsTests" begin include("DivTermsTests.jl") end
 end
