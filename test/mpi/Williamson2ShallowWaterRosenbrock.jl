@@ -21,9 +21,11 @@ module Williamson5ShallowWaterRosenbrock
   # neutrally stable for 0.5, L-stable for 1+sqrt(2)/2
   λ = 1.0 + 0.5*sqrt(2.0)
 
-  dt     = 30.0
+  num_refinements = 1
+
+  dt     = 30.0/(2^num_refinements)
   τ      = 0.5*dt
-  nstep  = 10#Int(24*60^2*20/dt) # 20 days
+  nstep  = 10*(2^num_refinements) #Int(24*60^2*20/dt) # 20 days
 
   function main(distribute,parts)
     ranks = distribute(LinearIndices((prod(parts),)))
@@ -34,16 +36,13 @@ module Williamson5ShallowWaterRosenbrock
     coarse_model, cell_panels, coarse_cell_wise_vertex_coordinates = parse_cubed_sphere_coarse_model("C12-regular/connectivity-gridapgeo.txt",
                                                                                                      "C12-regular/geometry-gridapgeo.txt")
 
-    num_uniform_refinements=0
-
     model = CubedSphereDiscreteModel(ranks,
                                      coarse_model,
                                      coarse_cell_wise_vertex_coordinates,
                                      cell_panels,
-                                     num_uniform_refinements;
+                                     num_refinements;
                                      radius=Rₑ,
-                                     #adaptive=true,
-                                     adaptive=false,
+                                     adaptive=true,
                                      order=1)
 
     P          = JacobiLinearSolver()
@@ -53,13 +52,24 @@ module Williamson5ShallowWaterRosenbrock
     hf, uf = shallow_water_rosenbrock_time_stepper(model, order, degree,
                                                    h₀, u₀, Ωₑ, gₑ, H₀,
                                                    λ, dt, τ, nstep,
-                                                   mm_solver, jac_solver;
+                                                   #mm_solver, jac_solver; iterative solvers are causing errors for the vorticity field
+                                                   BackslashSolver(), BackslashSolver();
                                                    leap_frog=true,
                                                    write_solution=true,
                                                    write_solution_freq=1,
                                                    write_diagnostics=true,
                                                    write_diagnostics_freq=1,
                                                    dump_diagnostics_on_screen=true)
+
+    Ω     = Triangulation(model)
+    dΩ    = Measure(Ω, degree)
+    hc    = CellField(h₀, Ω)
+    e     = h₀-hf
+    err_h = sqrt(sum(∫(e⋅e)*dΩ))/sqrt(sum(∫(hc⋅hc)*dΩ))
+    uc    = CellField(u₀, Ω)
+    e     = u₀-uf
+    err_u = sqrt(sum(∫(e⋅e)*dΩ))/sqrt(sum(∫(uc⋅uc)*dΩ))
+    println("\terr_u: ", err_u, ",\terr_h: ", err_h)
   end
 
   with_mpi() do distribute 
