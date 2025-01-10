@@ -34,7 +34,8 @@ end
 function topography(xyz)
   θϕr   = xyz2θϕr(xyz)
   θ,ϕ,r = θϕr
-  θc    = -π/2.0
+  #θc    = -π/2.0
+  θc    =  0.0
   ϕc    =  π/6.0
   bo    = 2000.0
   rad   = π/9.0

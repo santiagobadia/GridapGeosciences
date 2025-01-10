@@ -37,7 +37,10 @@ module Williamson5ShallowWaterRosenbrock
   # neutrally stable for 0.5, L-stable for 1+sqrt(2)/2
   λ = 1.0 + 0.5*sqrt(2.0)
 
-  dt     = 30.0
+  num_refinements = 1
+
+  dt     = 240.0/(2^num_refinements)
+  τ      = 0.5*dt
   nstep  = Int(24*60^2*20/dt) # 20 days
 
   function main(distribute,parts)
@@ -46,20 +49,21 @@ module Williamson5ShallowWaterRosenbrock
     # Change directory to the location of the script, where the mesh data files are located 
     cd(@__DIR__)
 
-    coarse_model, cell_panels, coarse_cell_wise_vertex_coordinates=
-      parse_cubed_sphere_coarse_model("williamson-5-C12/connectivity-gridapgeo.txt","williamson-5-C12/geometry-gridapgeo.txt")
+    coarse_model, cell_panels, coarse_cell_wise_vertex_coordinates = parse_cubed_sphere_coarse_model("williamson-5-C12/connectivity-gridapgeo.txt",
+                                                                                                     "williamson-5-C12/geometry-gridapgeo.txt")
 
-    num_uniform_refinements=0
 
-    GridapPETSc.with(args=split(petsc_mumps_options())) do
-      model=CubedSphereDiscreteModel(ranks,
-                                     coarse_model,
-                                     coarse_cell_wise_vertex_coordinates,
-                                     cell_panels,
-                                     num_uniform_refinements;
-                                     radius=rₑ,
-                                     adaptive=true,
-                                     order=1)
+    #GridapPETSc.with(args=split(petsc_mumps_options())) do
+      model = CubedSphereDiscreteModel(ranks,
+                                       coarse_model,
+                                       coarse_cell_wise_vertex_coordinates,
+                                       cell_panels,
+                                       num_refinements;
+                                       radius=Rₑ,
+                                       #adaptive=true,
+                                       adaptive=false,
+                                       order=1)
+      #model = CubedSphereDiscreteModel(ranks, 12; radius=Rₑ)
 
       P          = JacobiLinearSolver()
       mm_solver  = GridapSolvers.CGSolver(P;rtol=1.e-6)
@@ -67,16 +71,17 @@ module Williamson5ShallowWaterRosenbrock
 
       hf, uf = shallow_water_rosenbrock_time_stepper(model, order, degree,
                                                      h₀, u₀, Ωₑ, gₑ, H₀,
-                                                     λ, dt, 60.0, nstep,
-                                                     mm_solver, jac_solver;
+                                                     λ, dt, τ, nstep,
+                                                     #mm_solver, jac_solver;
+                                                     BackslashSolver(), BackslashSolver();
                                                      t₀=topography,
                                                      leap_frog=true,
                                                      write_solution=true,
-                                                     write_solution_freq=45,
+                                                     write_solution_freq=120,
                                                      write_diagnostics=true,
                                                      write_diagnostics_freq=1,
                                                      dump_diagnostics_on_screen=true)
-    end
+    #end
   end
 
   with_mpi() do distribute 

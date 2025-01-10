@@ -61,21 +61,21 @@ function shallow_water_rosenbrock_time_step!(
   u₂, h₂ = y₂
 
   # 2.1: the mass flux
-  compute_mass_flux!(F,dΩ,V,RTMMns,u₁*(2.0*h₁ + h₂)/6.0+u₂*(h₁ + 2.0*h₂)/6.0,u_wrk)
-  #compute_mass_flux!(F,dΩ,V,RTMMns,u₂*h₂,u_wrk)
+  #compute_mass_flux!(F,dΩ,V,RTMMns,u₁*(2.0*h₁ + h₂)/6.0+u₂*(h₁ + 2.0*h₂)/6.0,u_wrk)
+  compute_mass_flux!(F,dΩ,V,RTMMns,u₂*h₂,u_wrk)
   # 2.2: the bernoulli function
   if topog==nothing
-    compute_bernoulli_potential!(ϕ,dΩ,Q,L2MMns,(u₁⋅u₁ + u₁⋅u₂ + u₂⋅u₂)/3.0,0.5*(h₁ + h₂),g,h_wrk)
-    #compute_bernoulli_potential!(ϕ,dΩ,Q,L2MMns,u₂⋅u₂,h₂,g,h_wrk)
+    #compute_bernoulli_potential!(ϕ,dΩ,Q,L2MMns,(u₁⋅u₁ + u₁⋅u₂ + u₂⋅u₂)/3.0,0.5*(h₁ + h₂),g,h_wrk)
+    compute_bernoulli_potential!(ϕ,dΩ,Q,L2MMns,u₂⋅u₂,h₂,g,h_wrk)
   else
-    compute_bernoulli_potential!(ϕ,dΩ,Q,L2MMns,(u₁⋅u₁ + u₁⋅u₂ + u₂⋅u₂)/3.0,0.5*(h₁ + h₂)+topog,g,h_wrk)
-    #compute_bernoulli_potential!(ϕ,dΩ,Q,L2MMns,u₂⋅u₂,h₂+topog,g,h_wrk)
+    #compute_bernoulli_potential!(ϕ,dΩ,Q,L2MMns,(u₁⋅u₁ + u₁⋅u₂ + u₂⋅u₂)/3.0,0.5*(h₁ + h₂)+topog,g,h_wrk)
+    compute_bernoulli_potential!(ϕ,dΩ,Q,L2MMns,u₂⋅u₂,h₂+topog,g,h_wrk)
   end
   # 2.3: the potential vorticity
   _compute_potential_vorticity!(q₂,dΩ,R,S,h₂,u₂,f,n,mm_solver)
   # 2.4: assemble the momentum and continuity equation residuals
-  assemble_residuals!(y_wrk_2, dΩ, dω, Y, 0.5*(q₁ - τ*u₁⋅∇(q₁) + q₂ - τ*u₂⋅∇(q₂)), ϕ, F, n)
-  #assemble_residuals!(y_wrk_2, dΩ, dω, Y, q₂ - τ*u₂⋅∇(q₂), ϕ, F, n)
+  #assemble_residuals!(y_wrk_2, dΩ, dω, Y, 0.5*(q₁ - τ*u₁⋅∇(q₁) + q₂ - τ*u₂⋅∇(q₂)), ϕ, F, n)
+  assemble_residuals!(y_wrk_2, dΩ, dω, Y, q₂ - τ*u₂⋅∇(q₂), ϕ, F, n)
 
   # subtract A*[du₁,dh₁] from [du₂,dh₂] vector
   mul!(y_wrk, Amat, duh₁)
