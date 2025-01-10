@@ -30,6 +30,7 @@ function shallow_water_rosenbrock_time_step!(
   if leap_frog
     dt₁ = 2.0*dt
   end
+  τ_fac = dt₁/dt
 
   y₀v, y₁v, y₂v = get_free_dof_values(y₀,y₁,y₂)
   # multifield terms
@@ -46,7 +47,7 @@ function shallow_water_rosenbrock_time_step!(
   # 1.3: the potential vorticity
   _compute_potential_vorticity!(q₁,dΩ,R,S,h₁,u₁,f,n,mm_solver)
   # 1.4: assemble the momentum and continuity equation residuals
-  assemble_residuals!(y_wrk_2, dΩ, dω, Y, q₁ - τ*u₁⋅∇(q₁), ϕ, F, n)
+  assemble_residuals!(y_wrk_2, dΩ, dω, Y, q₁ - τ*τ_fac*u₁⋅∇(q₁), ϕ, F, n)
 
   # Solve for du₁, dh₁ over a MultiFieldFESpace
   if leap_frog
@@ -75,7 +76,7 @@ function shallow_water_rosenbrock_time_step!(
   _compute_potential_vorticity!(q₂,dΩ,R,S,h₂,u₂,f,n,mm_solver)
   # 2.4: assemble the momentum and continuity equation residuals
   #assemble_residuals!(y_wrk_2, dΩ, dω, Y, 0.5*(q₁ - τ*u₁⋅∇(q₁) + q₂ - τ*u₂⋅∇(q₂)), ϕ, F, n)
-  assemble_residuals!(y_wrk_2, dΩ, dω, Y, q₂ - τ*u₂⋅∇(q₂), ϕ, F, n)
+  assemble_residuals!(y_wrk_2, dΩ, dω, Y, q₂ - τ*((q₂ - q₁)/dt + u₂⋅∇(q₂)), ϕ, F, n)
 
   # subtract A*[du₁,dh₁] from [du₂,dh₂] vector
   mul!(y_wrk, Amat, duh₁)
@@ -217,7 +218,7 @@ function shallow_water_rosenbrock_time_stepper(
     if (write_solution)
       nv = get_normal_vector(Ω)
       compute_diagnostic_vorticity!(wn, dΩ, S, H1MMns, un, nv, w_wrk)
-      writevtk(Ω,"output_0000",cellfields=["hn"=>hn,"un"=>un,"wn"=>wn,"nv"=>nv])
+      writevtk(Ω,"output_00000",cellfields=["hn"=>hn,"un"=>un,"wn"=>wn,"nv"=>nv])
     end
 
     # dummy step
@@ -242,7 +243,7 @@ function shallow_water_rosenbrock_time_stepper(
     end
     if (write_solution && write_solution_freq>0 && mod(istep, write_solution_freq) == 0)
       compute_diagnostic_vorticity!(wn, dΩ, S, H1MMns, un, get_normal_vector(Ω), w_wrk)
-      writevtk(Ω,"output_$(lpad(istep,4,"0"))",cellfields=["hn"=>hn,"un"=>un,"wn"=>wn])
+      writevtk(Ω,"output_$(lpad(istep,5,"0"))",cellfields=["hn"=>hn,"un"=>un,"wn"=>wn])
     end
     # time step iteration loop
     for istep in 2:N
@@ -269,7 +270,7 @@ function shallow_water_rosenbrock_time_stepper(
       end
       if (write_solution && write_solution_freq>0 && mod(istep, write_solution_freq) == 0)
         compute_diagnostic_vorticity!(wn, dΩ, S, H1MMns, un, get_normal_vector(Ω), w_wrk)
-        writevtk(Ω,"output_$(lpad(istep,4,"0"))",cellfields=["hn"=>hn,"un"=>un,"wn"=>wn])
+        writevtk(Ω,"output_$(lpad(istep,5,"0"))",cellfields=["hn"=>hn,"un"=>un,"wn"=>wn])
       end
     end
     hn, un

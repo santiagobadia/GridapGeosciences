@@ -39,7 +39,7 @@ module Williamson5ShallowWaterRosenbrock
 
   num_refinements = 1
 
-  dt     = 240.0/(2^num_refinements)
+  dt     = 600.0/(2^num_refinements)
   τ      = 0.5*dt
   nstep  = Int(24*60^2*20/dt) # 20 days
 
@@ -77,7 +77,7 @@ module Williamson5ShallowWaterRosenbrock
                                                      t₀=topography,
                                                      leap_frog=true,
                                                      write_solution=true,
-                                                     write_solution_freq=120,
+                                                     write_solution_freq=72,
                                                      write_diagnostics=true,
                                                      write_diagnostics_freq=1,
                                                      dump_diagnostics_on_screen=true)
