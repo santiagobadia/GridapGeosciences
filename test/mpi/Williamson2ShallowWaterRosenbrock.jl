@@ -42,7 +42,7 @@ module Williamson5ShallowWaterRosenbrock
                                      cell_panels,
                                      num_refinements;
                                      radius=Rₑ,
-                                     adaptive=true,
+                                     adaptive=false,
                                      order=1)
 
     P          = JacobiLinearSolver()
