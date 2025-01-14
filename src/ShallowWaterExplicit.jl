@@ -39,7 +39,7 @@ end
 function shallow_water_explicit_time_step!(
      h₂, u₂, hₚ, uₚ, ϕ, F, q₁, q₂, H1h, H1hchol,      # in/out args
      model, dΩ, dω, V, Q, R, S, f, g, h₁, u₁, hₘ, uₘ, # in args
-     RTMMchol, L2MMchol, dt, τ, leap_frog,
+     RTMMchol, L2MMchol, dt, τ, leap_frog, h_wrk, u_wrk, w_wrk,
      assem=SparseMatrixAssembler(SparseMatrixCSC{Float64,Int},Vector{Float64},R,S))            # more in args
 
   # energetically balanced explicit second order shallow water solver
@@ -54,26 +54,67 @@ function shallow_water_explicit_time_step!(
   end
 
   # 1.1: the mass flux
-  compute_mass_flux!(F,dΩ,V,RTMMchol,u₁*h₁)
+  compute_mass_flux!(F,dΩ,V,RTMMchol,u₁*h₁,u_wrk)
   # 1.2: the bernoulli function
-  compute_bernoulli_potential!(ϕ,dΩ,Q,L2MMchol,u₁⋅u₁,h₁,g)
+  compute_bernoulli_potential!(ϕ,dΩ,Q,L2MMchol,u₁⋅u₁,h₁,g,h_wrk)
   # 1.3: the potential vorticity
-  compute_potential_vorticity!(q₁,H1h,H1hchol,dΩ,R,S,h₁,u₁,f,n,assem)
+  compute_potential_vorticity!(q₁,H1h,H1hchol,dΩ,R,S,h₁,u₁,f,n,assem,w_wrk)
   # 1.4: solve for the provisional velocity
-  compute_velocity!(uₚ,dΩ,dω,V,RTMMchol,uₘ,q₁-τ*u₁⋅∇(q₁),F,ϕ,n,dt1,dt1)
+  compute_velocity!(uₚ,dΩ,dω,V,RTMMchol,uₘ,q₁-τ*u₁⋅∇(q₁),F,ϕ,n,dt1,dt1,u_wrk)
   # 1.5: solve for the provisional depth
-  compute_depth!(hₚ,dΩ,dω,Q,L2MMchol,hₘ,F,dt1)
+  compute_depth!(hₚ,dΩ,dω,Q,L2MMchol,hₘ,F,dt1,h_wrk)
 
   # 2.1: the mass flux
-  compute_mass_flux!(F,dΩ,V,RTMMchol,u₁*(2.0*h₁ + hₚ)/6.0+uₚ*(h₁ + 2.0*hₚ)/6.0)
+  compute_mass_flux!(F,dΩ,V,RTMMchol,u₁*(2.0*h₁ + hₚ)/6.0+uₚ*(h₁ + 2.0*hₚ)/6.0,u_wrk)
   # 2.2: the bernoulli function
-  compute_bernoulli_potential!(ϕ,dΩ,Q,L2MMchol,(u₁⋅u₁ + u₁⋅uₚ + uₚ⋅uₚ)/3.0,0.5*(h₁ + hₚ),g)
+  compute_bernoulli_potential!(ϕ,dΩ,Q,L2MMchol,(u₁⋅u₁ + u₁⋅uₚ + uₚ⋅uₚ)/3.0,0.5*(h₁ + hₚ),g,h_wrk)
   # 2.3: the potential vorticity
-  compute_potential_vorticity!(q₂,H1h,H1hchol,dΩ,R,S,hₚ,uₚ,f,n,assem)
+  compute_potential_vorticity!(q₂,H1h,H1hchol,dΩ,R,S,hₚ,uₚ,f,n,assem,w_wrk)
   # 2.4: solve for the final velocity
-  compute_velocity!(u₂,dΩ,dω,V,RTMMchol,u₁,q₁-τ*u₁⋅∇(q₁)+q₂-τ*uₚ⋅∇(q₂),F,ϕ,n,0.5*dt,dt)
+  compute_velocity!(u₂,dΩ,dω,V,RTMMchol,u₁,q₁-τ*u₁⋅∇(q₁)+q₂-τ*uₚ⋅∇(q₂),F,ϕ,n,0.5*dt,dt,u_wrk)
   # 2.5: solve for the final depth
-  compute_depth!(h₂,dΩ,dω,Q,L2MMchol,h₁,F,dt)
+  compute_depth!(h₂,dΩ,dω,Q,L2MMchol,h₁,F,dt,h_wrk)
+end
+
+function shallow_water_ssprk3_time_step!(
+     h, u, ϕ, F, q, H1h, H1hchol, model, dΩ, dω, 
+     V, Q, R, S, f, g, hₙ, uₙ, hₚ, uₚ,
+     RTMMchol, L2MMchol, dt, τ, h_wrk, u_wrk, w_wrk,
+     assem=SparseMatrixAssembler(SparseMatrixCSC{Float64,Int},Vector{Float64},R,S))
+
+  n = get_normal_vector(Triangulation(model))
+  get_free_dof_values(uₙ) .= get_free_dof_values(u)
+  get_free_dof_values(hₙ) .= get_free_dof_values(h)
+
+  # stage 1 - diagnostics
+  compute_mass_flux!(F,dΩ,V,RTMMchol,uₙ*hₙ,u_wrk)
+  compute_bernoulli_potential!(ϕ,dΩ,Q,L2MMchol,uₙ⋅uₙ,hₙ,g,h_wrk)
+  compute_potential_vorticity!(q,H1h,H1hchol,dΩ,R,S,hₙ,uₙ,f,n,assem,w_wrk)
+  # stage 1 - prognostics
+  compute_velocity!(uₚ,dΩ,dω,V,RTMMchol,uₙ,q-0.0*τ*uₙ⋅∇(q),F,ϕ,n,dt,dt,u_wrk)
+  compute_depth!(hₚ,dΩ,dω,Q,L2MMchol,hₙ,F,dt,h_wrk)
+
+  # stage 2 - diagnostics
+  compute_mass_flux!(F,dΩ,V,RTMMchol,uₚ*hₚ,u_wrk)
+  compute_bernoulli_potential!(ϕ,dΩ,Q,L2MMchol,uₚ⋅uₚ,hₚ,g,h_wrk)
+  compute_potential_vorticity!(q,H1h,H1hchol,dΩ,R,S,hₚ,uₚ,f,n,assem,w_wrk)
+  # stage 2 - prognostics
+  _dt = 0.25*dt
+  get_free_dof_values(uₚ) .= 0.25*get_free_dof_values(uₚ) .+ 0.75*get_free_dof_values(uₙ)
+  get_free_dof_values(hₚ) .= 0.25*get_free_dof_values(hₚ) .+ 0.75*get_free_dof_values(hₙ)
+  compute_velocity!(uₚ,dΩ,dω,V,RTMMchol,uₚ,q-0.0*τ*uₙ⋅∇(q),F,ϕ,n,_dt,_dt,u_wrk)
+  compute_depth!(hₚ,dΩ,dω,Q,L2MMchol,hₚ,F,_dt,h_wrk)
+
+  # stage 3 - diagnostics
+  compute_mass_flux!(F,dΩ,V,RTMMchol,uₚ*hₚ,u_wrk)
+  compute_bernoulli_potential!(ϕ,dΩ,Q,L2MMchol,uₚ⋅uₚ,hₚ,g,h_wrk)
+  compute_potential_vorticity!(q,H1h,H1hchol,dΩ,R,S,hₚ,uₚ,f,n,assem,w_wrk)
+  # stage 3 - prognostics
+  _dt = (2.0/3.0)*dt
+  get_free_dof_values(uₚ) .= (2.0/3.0)*get_free_dof_values(uₚ) .+ (1.0/3.0)*get_free_dof_values(uₙ)
+  get_free_dof_values(hₚ) .= (2.0/3.0)*get_free_dof_values(hₚ) .+ (1.0/3.0)*get_free_dof_values(hₙ)
+  compute_velocity!(u,dΩ,dω,V,RTMMchol,uₚ,q-0.0*τ*uₙ⋅∇(q),F,ϕ,n,_dt,_dt,u_wrk)
+  compute_depth!(h,dΩ,dω,Q,L2MMchol,hₚ,F,_dt,h_wrk)
 end
 
 function project_shallow_water_initial_conditions(dΩ, Q, V, S, L2MMchol, RTMMchol, H1MMchol, h₀, u₀, f₀)
@@ -130,6 +171,7 @@ function shallow_water_explicit_time_stepper(
   # work arrays
   h_tmp = copy(hnv)
   w_tmp = copy(fv)
+  u_tmp = copy(unv)
   # build the potential vorticity lhs operator once just to initialise
   bmm(a,b) = ∫(a*hn*b)dΩ
   H1h      = assemble_matrix(bmm, R, S)
@@ -153,51 +195,55 @@ function shallow_water_explicit_time_stepper(
     q2     = clone_fe_function(S,f)
 
     # first step, no leap frog integration
-    shallow_water_explicit_time_step!(hn, un, hp, up, ϕ, F, q1, q2, H1h, H1hchol,
-                                      model, dΩ, dω, V, Q, R, S, f, g, hm1, um1, hm2, um2,
-                                      RTMMchol, L2MMchol, dt, τ, false)
-
-    if (write_diagnostics)
-      initialize_csv(diagnostics_file,"time", "mass", "vorticity", "kinetic", "potential", "power")
-    end
-
-    if (write_diagnostics && write_diagnostics_freq==1)
-      compute_diagnostic_vorticity!(wn, dΩ, S, H1MMchol, un, get_normal_vector(Ω))
-      dump_diagnostics_shallow_water!(h_tmp, w_tmp,
-                                      model, dΩ, dω, S, L2MM, H1MM,
-                                      hn, un, wn, ϕ, F, g, 1, dt,
-                                      diagnostics_file,
-                                      dump_diagnostics_on_screen)
-    end
+    #shallow_water_explicit_time_step!(hn, un, hp, up, ϕ, F, q1, q2, H1h, H1hchol,
+    #                                  model, dΩ, dω, V, Q, R, S, f, g, hm1, um1, hm2, um2,
+    #                                  RTMMchol, L2MMchol, dt, τ, false, h_tmp, u_tmp, w_tmp)
+    #if (write_diagnostics)
+    #  initialize_csv(diagnostics_file,"time", "mass", "vorticity", "kinetic", "potential", "power")
+    #end
+    #if (write_diagnostics && write_diagnostics_freq==1)
+    #  compute_diagnostic_vorticity!(wn, dΩ, S, H1MMchol, un, get_normal_vector(Ω),w_tmp)
+    #  dump_diagnostics_shallow_water!(h_tmp, w_tmp,
+    #                                  model, dΩ, dω, S, L2MM, H1MM,
+    #                                  hn, un, wn, ϕ, F, g, 1, dt,
+    #                                  diagnostics_file,
+    #                                  dump_diagnostics_on_screen)
+    #  writevtk(Ω,"output_00001",cellfields=["hn"=>hn,"un"=>un,"wn"=>wn])
+    #end
 
     # subsequent steps, do leap frog integration
     # (now that we have the state at two previous time levels)
-    for istep in 2:N
-      h_aux = hm2
-      hm2   = hm1
-      hm1   = hn
-      hn    = h_aux
-      u_aux = um2
-      um2   = um1
-      um1   = un
-      un    = u_aux
+    #for istep in 2:N
+    #  h_aux = hm2
+    #  hm2   = hm1
+    #  hm1   = hn
+    #  hn    = h_aux
+    #  u_aux = um2
+    #  um2   = um1
+    #  um1   = un
+    #  un    = u_aux
 
-      shallow_water_explicit_time_step!(hn, un, hp, up, ϕ, F, q1, q2, H1h, H1hchol,
-                                        model, dΩ, dω, V, Q, R, S, f, g, hm1, um1, hm2, um2,
-                                        RTMMchol, L2MMchol, dt, τ, true)
+    #  shallow_water_explicit_time_step!(hn, un, hp, up, ϕ, F, q1, q2, H1h, H1hchol,
+    #                                    model, dΩ, dω, V, Q, R, S, f, g, hm1, um1, hm2, um2,
+    #                                    RTMMchol, L2MMchol, dt, τ, true, h_tmp, u_tmp, w_tmp)
 
-      if (write_diagnostics && write_diagnostics_freq>0 && mod(istep, write_diagnostics_freq) == 0)
-        compute_diagnostic_vorticity!(wn, dΩ, S, H1MMchol, un, get_normal_vector(Ω))
-        dump_diagnostics_shallow_water!(h_tmp, w_tmp,
-                                        model, dΩ, dω, S, L2MM, H1MM,
-                                        hn, un, wn, ϕ, F, g, istep, dt,
-                                        diagnostics_file,
-                                        dump_diagnostics_on_screen)
-      end
-      if (write_solution && write_solution_freq>0 && mod(istep, write_solution_freq) == 0)
-        compute_diagnostic_vorticity!(wn, dΩ, S, H1MMchol, un, get_normal_vector(Ω))
-        pvd[dt*Float64(istep)] = new_vtk_step(Ω,joinpath(output_dir,"n=$(istep)"),["hn"=>hn,"un"=>un,"wn"=>wn])
-      end
+    #  if (write_diagnostics && write_diagnostics_freq>0 && mod(istep, write_diagnostics_freq) == 0)
+    #    compute_diagnostic_vorticity!(wn, dΩ, S, H1MMchol, un, get_normal_vector(Ω),w_tmp)
+    #    dump_diagnostics_shallow_water!(h_tmp, w_tmp,
+    #                                    model, dΩ, dω, S, L2MM, H1MM,
+    #                                    hn, un, wn, ϕ, F, g, istep, dt,
+    #                                    diagnostics_file,
+    #                                    dump_diagnostics_on_screen)
+    #  end
+    #  if (write_solution && write_solution_freq>0 && mod(istep, write_solution_freq) == 0)
+    #    compute_diagnostic_vorticity!(wn, dΩ, S, H1MMchol, un, get_normal_vector(Ω),w_tmp)
+    #    writevtk(Ω,"output_$(lpad(istep,5,"0"))",cellfields=["hn"=>hn,"un"=>un,"wn"=>wn])
+    #  end
+    #end
+    for istep in 1:N
+      shallow_water_ssprk3_time_step!(hn, un, ϕ, F, q1, H1h, H1hchol,
+                                      model, dΩ, dω, V, Q, R, S, f, g, hm1, um1, hm2, um2,
+                                      RTMMchol, L2MMchol, dt, τ, h_tmp, u_tmp, w_tmp)
     end
     hn, un
   end
@@ -205,10 +251,10 @@ function shallow_water_explicit_time_stepper(
     rm(output_dir,force=true,recursive=true)
     mkdir(output_dir)
   end
-  if (write_solution)
-    pvdfile=joinpath(output_dir,"nswe_eq_ncells_$(num_cells(model))_order_$(order)_explicit")
-    paraview_collection(run_simulation,pvdfile)
-  else
-    run_simulation()
-  end
+  #if (write_solution)
+  #  pvdfile=joinpath(output_dir,"nswe_eq_ncells_$(num_cells(model))_order_$(order)_explicit")
+  #  paraview_collection(run_simulation,pvdfile)
+  #else
+  run_simulation()
+  #end
 end
