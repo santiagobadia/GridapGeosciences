@@ -15,24 +15,26 @@ module ParseMesh
 
   num_refinements = 0
 
-  function write_connectivity(filename,cell_cells,cell_edges,cell_verts,edge_verts)
+  function write_connectivity(filename,cell_cells,cell_edges,cell_verts,edge_verts,coords)
 
     io_buf_cv = IOBuffer()
     io_buf_ce = IOBuffer()
     io_buf_cc = IOBuffer()
     io_buf_ev = IOBuffer()
+    io_buf_nx = IOBuffer()
+    io_buf_ny = IOBuffer()
 
     for c in 1:length(cell_verts)
       @printf(io_buf_cv, "  %d, %d, %d, %d\n", cell_verts[c][1], cell_verts[c][2], cell_verts[c][3], cell_verts[c][4])
-    end
-    for c in 1:length(cell_edges)
       @printf(io_buf_ce, "  %d, %d, %d, %d\n", cell_edges[c][1], cell_edges[c][2], cell_edges[c][3], cell_edges[c][4])
-    end
-    for c in 1:length(cell_cells)
       @printf(io_buf_cc, "  %d, %d, %d, %d\n", cell_cells[c][1], cell_cells[c][2], cell_cells[c][3], cell_cells[c][4])
     end
     for e in 1:length(edge_verts)
       @printf(io_buf_ev, "  %d, %d\n", edge_verts[e][1], edge_verts[e][2])
+    end
+    for v in 1:length(coords)
+      @printf(io_buf_nx, "%f\n", coords[v][1])
+      @printf(io_buf_ny, "%f\n", coords[v][2])
     end
     open(filename,"w") do file
       write(file," dynamics_face_nodes =\n")
@@ -43,6 +45,10 @@ module ParseMesh
       write(file,take!(io_buf_cc))
       write(file," dynamics_edge_nodes =\n")
       write(file,take!(io_buf_ev))
+      write(file," dynamics_node_x =\n")
+      write(file,take!(io_buf_nx))
+      write(file," dynamics_node_y =\n")
+      write(file,take!(io_buf_ny))
     end
 
     # TODO: write the node geometry
@@ -67,13 +73,18 @@ module ParseMesh
                                      adaptive=false,
 				     order=1)
 
-    topo=Gridap.Geometry.get_grid_topology(coarse_model)
-    cell_cells=Gridap.Geometry.get_faces(topo,2,1)
-    cell_edges=Gridap.Geometry.get_faces(topo,2,1)
-    cell_verts=Gridap.Geometry.get_faces(topo,2,0)
-    edge_verts=Gridap.Geometry.get_faces(topo,1,0)
+    topo = Gridap.Geometry.get_grid_topology(coarse_model)
+    #topo = Gridap.Geometry.get_grid_topology(model.cubed_sphere_linear_model)
+    cell_cells = Gridap.Geometry.get_faces(topo,2,1)
+    cell_edges = Gridap.Geometry.get_faces(topo,2,1)
+    cell_verts = Gridap.Geometry.get_faces(topo,2,0)
+    edge_verts = Gridap.Geometry.get_faces(topo,1,0)
 
-    write_connectivity("parsed_geometry.txt",cell_cells,cell_edges,cell_verts,edge_verts)
+    coords = Gridap.Geometry.get_node_coordinates(coarse_model)
+    #coords = Gridap.Geometry.get_node_coordinates(model)
+    #coords = Gridap.Geometry.get_node_coordinates(get_grid(model.cubed_sphere_linear_model))
+
+    write_connectivity("parsed_geometry.txt",cell_cells,cell_edges,cell_verts,edge_verts,coords)
   end
 
   with_mpi() do distribute 
