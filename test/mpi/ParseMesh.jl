@@ -13,9 +13,14 @@ module ParseMesh
   using GridapSolvers
   using GridapP4est
 
-  num_refinements = 0
-
-  function write_connectivity(filename,cell_cells,cell_edges,cell_verts,edge_verts,coords)
+  function write_connectivity(filename,model)
+    topo       = Gridap.Geometry.get_grid_topology(model)
+    cell_cells = Gridap.Geometry.get_faces(topo,2,2)
+    cell_edges = Gridap.Geometry.get_faces(topo,2,1)
+    cell_verts = Gridap.Geometry.get_faces(topo,2,0)
+    edge_verts = Gridap.Geometry.get_faces(topo,1,0)
+    edge_cells = Gridap.Geometry.get_faces(topo,1,2)
+    coords     = Gridap.Geometry.get_node_coordinates(model)
 
     io_buf_cv = IOBuffer()
     io_buf_ce = IOBuffer()
@@ -24,10 +29,21 @@ module ParseMesh
     io_buf_nx = IOBuffer()
     io_buf_ny = IOBuffer()
 
+    _cell_cells = Vector{Int32}(undef, 4)
+
     for c in 1:length(cell_verts)
       @printf(io_buf_cv, "  %d, %d, %d, %d\n", cell_verts[c][1], cell_verts[c][2], cell_verts[c][3], cell_verts[c][4])
       @printf(io_buf_ce, "  %d, %d, %d, %d\n", cell_edges[c][1], cell_edges[c][2], cell_edges[c][3], cell_edges[c][4])
-      @printf(io_buf_cc, "  %d, %d, %d, %d\n", cell_cells[c][1], cell_cells[c][2], cell_cells[c][3], cell_cells[c][4])
+      i_cell = cell_cells[c][1]
+      for d in 1:4
+	i_edge = cell_edges[c][d]
+	if i_cell == edge_cells[i_edge][1]
+	  _cell_cells[d] = edge_cells[i_edge][2]
+	else
+	  _cell_cells[d] = edge_cells[i_edge][1]
+	end
+      end
+      @printf(io_buf_cc, "  %d, %d, %d, %d\n", _cell_cells[1], _cell_cells[2], _cell_cells[3], _cell_cells[4])
     end
     for e in 1:length(edge_verts)
       @printf(io_buf_ev, "  %d, %d\n", edge_verts[e][1], edge_verts[e][2])
@@ -61,30 +77,25 @@ module ParseMesh
     # Change directory to the location of the script, where the mesh data files are located 
     cd(@__DIR__)
 
-    coarse_model, cell_panels, coarse_cell_wise_vertex_coordinates = parse_cubed_sphere_coarse_model("williamson-5-C12/connectivity-gridapgeo.txt",
-                                                                                                     "williamson-5-C12/geometry-gridapgeo.txt")
+    coarse_model, cell_panels, coarse_vertex_coords = parse_cubed_sphere_coarse_model("C12-regular/connectivity-gridapgeo.txt",
+                                                                                      "C12-regular/geometry-gridapgeo.txt")
 
-    model = CubedSphereDiscreteModel(ranks,
-                                     coarse_model,
-                                     coarse_cell_wise_vertex_coordinates,
-                                     cell_panels,
-                                     num_refinements;
-                                     radius=6371220.0,
-                                     adaptive=false,
-				     order=1)
+    write_connectivity("parsed_geometry_0.txt",coarse_model)
 
-    topo = Gridap.Geometry.get_grid_topology(coarse_model)
-    #topo = Gridap.Geometry.get_grid_topology(model.cubed_sphere_linear_model)
-    cell_cells = Gridap.Geometry.get_faces(topo,2,1)
-    cell_edges = Gridap.Geometry.get_faces(topo,2,1)
-    cell_verts = Gridap.Geometry.get_faces(topo,2,0)
-    edge_verts = Gridap.Geometry.get_faces(topo,1,0)
+    num_refinements = 1
 
-    coords = Gridap.Geometry.get_node_coordinates(coarse_model)
-    #coords = Gridap.Geometry.get_node_coordinates(model)
-    #coords = Gridap.Geometry.get_node_coordinates(get_grid(model.cubed_sphere_linear_model))
+    for ref in 1:num_refinements
+      model = CubedSphereDiscreteModel(ranks,
+                                       coarse_model,
+                                       coarse_vertex_coords,
+                                       cell_panels,
+                                       ref;
+                                       radius=6371220.0,
+                                       adaptive=false,
+                                       order=1)
 
-    write_connectivity("parsed_geometry.txt",cell_cells,cell_edges,cell_verts,edge_verts,coords)
+      write_connectivity("parsed_geometry_$(ref).txt",model)
+    end
   end
 
   with_mpi() do distribute 
