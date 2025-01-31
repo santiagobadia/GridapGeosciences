@@ -11,16 +11,24 @@ module ParseMesh
   using GridapGeosciences
   using GridapDistributed
   using GridapSolvers
-  using GridapP4est
+  using GridapP4est 
 
-  function write_connectivity(filename,model)
-    topo       = Gridap.Geometry.get_grid_topology(model)
+  function adapt_model(ranks,model)
+    cell_partition=get_cell_gids(model.octree_model.dmodel)
+    ref_coarse_flags=map(ranks,partition(cell_partition)) do rank,indices
+        flags=zeros(Cint,length(indices))
+        flags.=refine_flag
+    end
+    GridapP4est.adapt(model,ref_coarse_flags)
+  end
+
+  function write_connectivity(filename,topo,model)
     cell_cells = Gridap.Geometry.get_faces(topo,2,2)
     cell_edges = Gridap.Geometry.get_faces(topo,2,1)
     cell_verts = Gridap.Geometry.get_faces(topo,2,0)
     edge_verts = Gridap.Geometry.get_faces(topo,1,0)
     edge_cells = Gridap.Geometry.get_faces(topo,1,2)
-    coords     = Gridap.Geometry.get_node_coordinates(model)
+    coords     = Gridap.Geometry.get_node_coordinates(get_grid(model))
 
     io_buf_cv = IOBuffer()
     io_buf_ce = IOBuffer()
@@ -67,7 +75,6 @@ module ParseMesh
       write(file,take!(io_buf_ny))
     end
 
-    # TODO: write the node geometry
     # TODO: write the cell links between MG meshes
   end
 
@@ -80,22 +87,25 @@ module ParseMesh
     coarse_model, cell_panels, coarse_vertex_coords = parse_cubed_sphere_coarse_model("C12-regular/connectivity-gridapgeo.txt",
                                                                                       "C12-regular/geometry-gridapgeo.txt")
 
-    write_connectivity("parsed_geometry_0.txt",coarse_model)
+    num_refinements = 3
 
-    num_refinements = 1
+    model = CubedSphereDiscreteModel(ranks,
+                                     coarse_model,
+                                     coarse_vertex_coords,
+                                     cell_panels,
+                                     0;
+                                     radius=6371220.0,
+                                     adaptive=true,
+                                     order=1)
 
-    for ref in 1:num_refinements
-      model = CubedSphereDiscreteModel(ranks,
-                                       coarse_model,
-                                       coarse_vertex_coords,
-                                       cell_panels,
-                                       ref;
-                                       radius=6371220.0,
-                                       adaptive=false,
-                                       order=1)
-
-      write_connectivity("parsed_geometry_$(ref).txt",model)
+    for refinement_level in 1:num_refinements
+      topo = Gridap.Geometry.get_grid_topology(model)
+      write_connectivity("parsed_geometry_$(refinement_level).txt",local_views(topo).item_ref[],local_views(model).item_ref[])
+      model,_ = adapt_model(ranks,model)
     end
+    topo = Gridap.Geometry.get_grid_topology(model)
+    refinement_level = num_refinements + 1
+    write_connectivity("parsed_geometry_$(refinement_level).txt",local_views(topo).item_ref[],local_views(model).item_ref[])
   end
 
   with_mpi() do distribute 
