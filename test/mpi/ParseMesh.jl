@@ -40,8 +40,12 @@ module ParseMesh
     _cell_cells = Vector{Int32}(undef, 4)
 
     for c in 1:length(cell_verts)
-      @printf(io_buf_cv, "  %d, %d, %d, %d\n", cell_verts[c][1], cell_verts[c][2], cell_verts[c][3], cell_verts[c][4])
-      @printf(io_buf_ce, "  %d, %d, %d, %d\n", cell_edges[c][1], cell_edges[c][2], cell_edges[c][3], cell_edges[c][4])
+      # Gridap vertex ordering: [SouthWest, SouthEast, NorthWest, NorthEast]
+      # LFRic  vertex ordering: [SouthWest, SouthEast, NorthEast, NorthWest]
+      @printf(io_buf_cv, "  %d, %d, %d, %d\n", cell_verts[c][1], cell_verts[c][2], cell_verts[c][4], cell_verts[c][3])
+      # Gridap edge ordering: [South, North, West, East ]
+      # LFRic  edge ordering: [West,  South, East, North]
+      @printf(io_buf_ce, "  %d, %d, %d, %d\n", cell_edges[c][3], cell_edges[c][1], cell_edges[c][4], cell_edges[c][2])
       i_cell = cell_cells[c][1]
       for d in 1:4
 	i_edge = cell_edges[c][d]
@@ -51,7 +55,7 @@ module ParseMesh
 	  _cell_cells[d] = edge_cells[i_edge][1]
 	end
       end
-      @printf(io_buf_cc, "  %d, %d, %d, %d\n", _cell_cells[1], _cell_cells[2], _cell_cells[3], _cell_cells[4])
+      @printf(io_buf_cc, "  %d, %d, %d, %d\n", _cell_cells[3], _cell_cells[1], _cell_cells[4], _cell_cells[2])
     end
     for e in 1:length(edge_verts)
       @printf(io_buf_ev, "  %d, %d\n", edge_verts[e][1], edge_verts[e][2])
