@@ -74,8 +74,17 @@ module ParseMesh
       write(file," dynamics_node_y =\n")
       write(file,take!(io_buf_ny))
     end
+  end
 
-    # TODO: write the cell links between MG meshes
+  function write_intermesh_connectivity(filename,conn)
+    io_buf = IOBuffer()
+    for c in 1:length(conn)
+      @printf(io_buf, "  %d\n", conn[c][1])
+    end
+    open(filename,"w") do file
+      write(file," intermesh_cell_connectivity =\n")
+      write(file,take!(io_buf))
+    end
   end
 
   function main(distribute,parts)
@@ -100,12 +109,15 @@ module ParseMesh
 
     for refinement_level in 1:num_refinements
       topo = Gridap.Geometry.get_grid_topology(model)
-      write_connectivity("parsed_geometry_$(refinement_level).txt",local_views(topo).item_ref[],local_views(model).item_ref[])
+      write_connectivity("parsed_topology_$(refinement_level).txt",local_views(topo).item_ref[],local_views(model).item_ref[])
       model,_ = adapt_model(ranks,model)
+
+      intermesh_connectivity = model.octree_model.dmodel.models.item_ref[].glue.n2o_faces_map[3]
+      write_intermesh_connectivity("parsed_intermesh_connectivity_$(refinement_level).txt",intermesh_connectivity)
     end
     topo = Gridap.Geometry.get_grid_topology(model)
     refinement_level = num_refinements + 1
-    write_connectivity("parsed_geometry_$(refinement_level).txt",local_views(topo).item_ref[],local_views(model).item_ref[])
+    write_connectivity("parsed_topology_$(refinement_level).txt",local_views(topo).item_ref[],local_views(model).item_ref[])
   end
 
   with_mpi() do distribute 
